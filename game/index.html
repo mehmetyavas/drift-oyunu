@@ -203,6 +203,11 @@
         border: 6px solid rgba(255,107,90,.75); transform: translateX(-50%); box-sizing: border-box; }
       .tc-wheel::before { content: ""; position: absolute; left: 50%; top: -9px; width: 6px; height: 12px; margin-left: -3px; border-radius: 3px; background: #fff; }
       .tc-rotate { display: none; }
+      .tc-hint { position: fixed; top: 28%; left: 50%; transform: translateX(-50%); max-width: 80vw; padding: 10px 16px; border-radius: 14px;
+        background: var(--glass); border: 1px solid var(--edge); font: 800 14px system-ui; text-align: center; pointer-events: none;
+        animation: hintIn .3s ease-out, hintOut .5s ease-in 4.5s forwards; }
+      @keyframes hintIn { from { opacity: 0; transform: translate(-50%, -8px); } }
+      @keyframes hintOut { to { opacity: 0; } }
       @media (orientation: portrait) {
         .touch .tc-rotate { display: block; position: fixed; top: 38%; left: 50%; transform: translateX(-50%); padding: 12px 18px; border-radius: 16px;
           background: var(--glass); border: 1px solid var(--edge); font: 800 15px system-ui; white-space: nowrap; }

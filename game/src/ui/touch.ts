@@ -30,8 +30,6 @@ function save(k: string, v: string): void {
   }
 }
 
-const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
 type Opts = { onCamera(): void; onMenu(): void };
 
 /**
@@ -58,11 +56,34 @@ export class TouchControls {
     document.documentElement.classList.add("touch");
     this.build();
     addEventListener("devicemotion", (e) => this.onMotion(e));
-    // No motion events after a while (desktop browser, blocked sensor): fall back to buttons.
+    this.show(this.mode);
+    // iOS only hands out motion data after a tap, so ask on the very first one.
+    if (this.mode === "tilt" && this.needsPermission()) {
+      this.hint("📱 Ekrana dokun, sonra telefonu direksiyon gibi sağa sola çevir");
+      addEventListener("touchend", () => this.mode === "tilt" && this.setMode("tilt"), { once: true });
+    } else if (this.mode === "tilt") {
+      this.hint("📱 Telefonu direksiyon gibi sağa sola çevir");
+    }
+    // No motion at all after a while (blocked sensor, desktop): use the buttons for now, without saving that.
     setTimeout(() => {
-      if (!this.motionSeen && this.mode === "tilt" && !isIOS()) this.setMode("buttons");
-    }, 1500);
-    this.setMode(this.mode);
+      if (!this.motionSeen && this.mode === "tilt" && !this.needsPermission()) {
+        this.show("buttons");
+        this.hint("Eğim sensörü yok: ◀ ▶ ile sür");
+      }
+    }, 2000);
+  }
+
+  private needsPermission(): boolean {
+    const DM = (window as unknown as { DeviceMotionEvent?: MotionPermission }).DeviceMotionEvent;
+    return !!DM?.requestPermission && !this.motionSeen;
+  }
+
+  private hint(text: string): void {
+    const el = document.createElement("div");
+    el.className = "tc-hint";
+    el.textContent = text;
+    this.root.append(el);
+    setTimeout(() => el.remove(), 5000);
   }
 
   private hold(id: string, el: HTMLElement): void {
@@ -146,20 +167,28 @@ export class TouchControls {
     addEventListener("pointerdown", immerse, { once: true });
   }
 
+  /** Called from a tap: asks iOS for motion access when switching to tilt, and remembers the choice. */
   private async setMode(m: Mode): Promise<void> {
-    if (m === "tilt") {
-      const DM = (window as unknown as { DeviceMotionEvent?: MotionPermission }).DeviceMotionEvent;
-      if (DM?.requestPermission) {
-        // iOS: must be asked from a tap. If this call is not from one, the mode button asks again.
-        try {
-          if ((await DM.requestPermission()) !== "granted") m = "buttons";
-        } catch {
+    if (m === "tilt" && this.needsPermission()) {
+      const DM = (window as unknown as { DeviceMotionEvent: Required<MotionPermission> }).DeviceMotionEvent;
+      try {
+        if ((await DM.requestPermission()) !== "granted") {
+          this.hint("Hareket izni verilmedi: ◀ ▶ ile sür (📱'ye dokunup tekrar deneyebilirsin)");
           m = "buttons";
         }
+      } catch {
+        m = "buttons";
       }
     }
     this.mode = m;
     save(MODE_KEY, m);
+    this.show(m);
+    if (m === "tilt") this.hint("📱 Telefonu direksiyon gibi sağa sola çevir · 🎯 ortalar · ↔ yönü ters çevirir");
+  }
+
+  /** Updates the controls for a mode without asking for anything. */
+  private show(m: Mode): void {
+    this.mode = m;
     this.root.dataset.mode = m;
     this.modeBtn.textContent = m === "tilt" ? "📱" : "🕹️";
     this.modeBtn.setAttribute("aria-label", m === "tilt" ? "Eğerek sürüş açık — düğmelere geç" : "Düğmeyle sürüş açık — eğerek sürüşe geç");
@@ -172,8 +201,9 @@ export class TouchControls {
     this.motionSeen = true;
     // Rotation in the screen plane, from gravity; corrected for the current landscape side.
     const angle = (screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0) as number;
-    let r = rollFromGravity(g.x, g.y) + angle;
-    if (isIOS()) r = -r; // Safari reports gravity with the opposite sign
+    // Turning the phone clockwise (steering right) lowers atan2(gx, gy) in both landscape directions, so flip it to
+    // match the game (positive = right). Safari's inverted gravity only adds a constant 180°, not a direction change.
+    const r = -(rollFromGravity(g.x, g.y) + angle);
     this.roll = this.roll === null ? r : this.roll + lowPass(0, ((r - this.roll + 540) % 360) - 180, 0.5);
     if (this.center === null) this.center = this.roll;
     const s = steerFromRoll(this.roll, this.center, { range: TILT_RANGE });

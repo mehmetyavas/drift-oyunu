@@ -154,7 +154,7 @@ async function boot() {
   const exhaust = new Exhaust();
   const police = new PoliceForce();
   // Debug handles (used by browser checks).
-  Object.assign(window, { __police: police, __alert: () => police.alert(car, road), __car: () => car, __session: session });
+  Object.assign(window, { __police: police, __alert: () => police.alert(car, road), __car: () => car, __session: session, __touch: touch });
   const policeViews = new Map<PoliceUnit, CarModel>();
   const policeFx = document.getElementById("police")!;
   let prevPoliceDist = Infinity;

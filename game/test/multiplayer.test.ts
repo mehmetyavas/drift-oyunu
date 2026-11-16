@@ -100,3 +100,25 @@ describe("shared track", () => {
     expect(rank(rows, "battle").map((r) => r.id)).toEqual(["a", "c", "b", "d"]);
   });
 });
+
+describe("phone tilt direction", () => {
+  // Landscape, phone held like a wheel: gravity (reaction, spec sign) along device +x. Steering right = rotating the
+  // phone clockwise by θ, which turns the gravity vector in device coordinates counter-clockwise.
+  const gravityAfter = (thetaDeg: number, base: number) => {
+    const a = ((base + thetaDeg) * Math.PI) / 180;
+    return { x: Math.cos(a) * 9.8, y: Math.sin(a) * 9.8 };
+  };
+  it("clockwise rotation steers right in both landscape directions, with either gravity sign", async () => {
+    const { rollFromGravity, steerFromRoll } = await import("@drift/shared");
+    for (const base of [0, 180]) {
+      for (const flip of [1, -1]) {
+        const roll = (t: number) => {
+          const g = gravityAfter(t, base);
+          return -rollFromGravity(g.x * flip, g.y * flip);
+        };
+        expect(steerFromRoll(roll(20), roll(0), { range: 25 })).toBeGreaterThan(0.5);
+        expect(steerFromRoll(roll(-20), roll(0), { range: 25 })).toBeLessThan(-0.5);
+      }
+    }
+  });
+});
