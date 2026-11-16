@@ -10,6 +10,8 @@ export interface Conn {
 }
 
 export const COUNTDOWN_MS = 4000;
+/** Late joiners appear this far behind the last car (m), so they do not land on top of it. */
+export const SPAWN_BEHIND = 40;
 export const MAX_ROOMS = 300;
 /** Minimum gap between accepted car states from one player (ms). */
 export const STATE_MIN_GAP = 30;
@@ -197,10 +199,13 @@ export class Hub {
     room.players.push(player);
     if (!room.host) room.host = player.id;
     seat.player = player;
-    if (room.phase === "racing" && room.mode === "free") {
-      room.racers.add(player.id);
+    if (room.phase === "racing") {
+      // Drop-in: score modes take the newcomer straight into the running round, next to the last car.
+      // A race would be unfair to join halfway, so the newcomer watches the leader until the next one.
+      const drop = !MODE_INFO[room.mode].race;
+      if (drop) room.racers.add(player.id);
       this.broadcastLobby(room);
-      seat.conn.send(this.roundMsg(room));
+      seat.conn.send(this.roundMsg(room, drop ? this.spawnHint(room, "last") : this.spawnHint(room, "lead")));
     } else this.broadcastLobby(room);
   }
 
@@ -318,10 +323,18 @@ export class Hub {
     this.broadcast(room, this.results(room));
   }
 
-  private roundMsg(room: Room): Message {
+  /** Road distance of the last (or leading) car in the round, from the latest snapshots. */
+  private spawnHint(room: Room, which: "last" | "lead"): number {
+    const ss = room.players.filter((p) => room.racers.has(p.id) && p.last).map((p) => p.last!.s);
+    if (!ss.length) return 0;
+    return which === "last" ? Math.max(0, Math.min(...ss) - SPAWN_BEHIND) : Math.max(...ss);
+  }
+
+  private roundMsg(room: Room, spawn = 0): Message {
     return {
       t: "round", seed: room.seed, mode: room.mode, extreme: room.extreme, duration: room.duration,
       startIn: room.startAt - this.now(), grid: room.players.filter((p) => room.racers.has(p.id)).map((p) => p.id),
+      spawn: Math.round(spawn),
     };
   }
 

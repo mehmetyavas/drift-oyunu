@@ -9,7 +9,11 @@ import type { CarState } from "../sim/car";
 /** Car snapshots per second sent to the room. */
 const SEND_HZ = 20;
 
-export type Round = { seed: number; mode: Mode; extreme: boolean; duration: number; startAt: number; grid: string[] };
+export type Round = {
+  seed: number; mode: Mode; extreme: boolean; duration: number; startAt: number; grid: string[];
+  /** Road distance to start at (late join) or to look at (spectator). 0 = the grid. */
+  spawn: number;
+};
 
 export type SessionEvents = {
   lobby(): void;
@@ -54,6 +58,22 @@ export class Session {
   /** True while I am driving in a multiplayer round (countdown included). */
   get racing(): boolean {
     return this.phase === "racing" && this.round !== null && this.me !== null && this.racers.has(this.me);
+  }
+
+  /** In the room while a round runs that I am not part of (a race I joined late): watch the leader. */
+  get spectating(): boolean {
+    return this.phase === "racing" && this.round !== null && this.me !== null && !this.racers.has(this.me);
+  }
+
+  /** The car to watch while spectating: the one furthest down the road. */
+  leader(now: number): { id: string; car: CarState } | null {
+    let best: { id: string; s: number } | null = null;
+    for (const id of this.racers) {
+      const l = this.tracks.get(id)?.latest;
+      if (l && (!best || l.s > best.s)) best = { id, s: l.s };
+    }
+    const smp = best ? this.tracks.get(best.id)!.sample(now) : null;
+    return best && smp ? { id: best.id, car: smp.car } : null;
   }
 
   create(name: string): void {
@@ -112,7 +132,7 @@ export class Session {
         break;
       }
       case "round":
-        this.round = { seed: m.seed, mode: m.mode, extreme: m.extreme, duration: m.duration, startAt: now + m.startIn, grid: m.grid };
+        this.round = { seed: m.seed, mode: m.mode, extreme: m.extreme, duration: m.duration, startAt: now + m.startIn, grid: m.grid, spawn: m.spawn };
         this.results = null;
         this.finished = false;
         this.tracks.clear();

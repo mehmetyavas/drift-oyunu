@@ -67,13 +67,22 @@ Art arda drift at, çarpan yükselsin (x10'a kadar). Yoldan çıkarsan birikmekt
 C tuşu (ya da telefondaki 🎥) sırayla geçer: **takip**, **uzak takip**, **kaput**, **tampon**, **helikopter**, **TV kamerası**
 (yol kenarına kurulup arabayı zoom'la izler). Seçim tarayıcıda hatırlanır.
 
+## Telefonda oynamak (uygulamasız)
+
+Siteyi telefon tarayıcısında aç, oyun telefonda çalışır: **telefonu direksiyon gibi eğ** (iPhone'da 📱'ye dokunup hareket
+iznini ver), ya da 🕹️ ile **◀ ▶ düğmelerine** geç. Sağda **FREN** ve **NİTRO**, üstte ☰ menü, 🎥 kamera, 🎯 ortala, ↔ yönü çevir.
+İlk dokunuşta tam ekrana geçer (Android'de yatay kilitlenir); Android'de drift ve kombolarda titrer. Masaüstünde
+denemek için adrese `?touch=1` ekle.
+
 ## Çok oyunculu (internet üzerinden)
 
 Canlı sunucu: **https://drift.restopanel.com.tr**
 
-1. Sol üstteki **👥 Çok oyunculu**'ya bas (ya da Esc), adını yaz, **Oda kur**.
-2. 4 harfli oda kodunu ya da **Davet linkini** arkadaşlarına gönder. Link açılınca kod hazır gelir, isim yazıp **Katıl**.
-3. Kurucu modu seçer ve **BAŞLAT**'a basar. Herkes aynı tohumla üretilen aynı yolda, aynı anda 3-2-1 ile başlar.
+1. Sol üstteki **👥 Çok oyunculu**'ya bas (ya da Esc / telefonda ☰), adını yaz, **Oda kur**.
+2. Bekleme odası açılır: 4 harfli kodu ya da **Davet linkini** gönder, gelenler boş yuvalara oturur ("👋 … katıldı").
+3. Kurucu modu seçer. İsterse arkadaşlarını bekler, isterse **TEK BAŞINA BAŞLA** der. Herkes aynı yolda aynı anda 3-2-1 ile başlar.
+4. Tur başladıktan sonra gelen de oyuna girer: Drift Savaşı / Hayalet / Serbest'te sondaki arabanın yanına iner, kalan süreyle
+   oynar. Yarış'ta ortadan girmek haksızlık olacağından lideri izler ve sonraki turda başlar.
 
 | Mod | Kural |
 |---|---|

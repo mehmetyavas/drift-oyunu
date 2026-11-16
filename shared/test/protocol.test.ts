@@ -50,8 +50,8 @@ describe("multiplayer messages", () => {
       { t: "finish" },
       { t: "lobby", room: "AB23", you: "a1", host: "a1", players: [{ id: "a1", name: "X", color: 0xff0000 }], mode: "ghost", extreme: false, duration: 120, phase: "lobby", racers: [] },
       // Seeds use the full 31-bit range: a regression once dropped every round message.
-      { t: "round", seed: 2 ** 31 - 1, mode: "battle", extreme: false, duration: 180, startIn: 4000, grid: ["a1", "b2"] },
-      { t: "round", seed: 936443404, mode: "free", extreme: true, duration: 120, startIn: -5000, grid: ["a1"] },
+      { t: "round", seed: 2 ** 31 - 1, mode: "battle", extreme: false, duration: 180, startIn: 4000, grid: ["a1", "b2"], spawn: 0 },
+      { t: "round", seed: 936443404, mode: "free", extreme: true, duration: 120, startIn: -5000, grid: ["a1"], spawn: 1840 },
       { t: "state", x: 1, z: 2, h: 0.1, vx: 3, vz: 4, yr: 0.2, st: -0.5, d: true, sc: 100, pd: 5, m: 2, s: 1234 },
       { t: "state", id: "b2", x: 1, z: 2, h: 0.1, vx: 3, vz: 4, yr: 0.2, st: 0, d: false, sc: 0, pd: 0, m: 1, s: 0 },
       { t: "results", mode: "race", ranking: [{ id: "a1", name: "X", color: 1, score: 5, dist: 4000, finish: 81.5 }, { id: "b2", name: "Y", color: 2, score: 9, dist: 3000, finish: null }] },

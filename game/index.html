@@ -2,7 +2,11 @@
 <html lang="tr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1026" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Drift</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8F%81%3C/text%3E%3C/svg%3E" />
     <style>
@@ -160,6 +164,77 @@
         .mp-btn, .mp-mode, #mpBtn { transition: none; }
         #board .bd-head.hot { animation: none; }
       }
+
+      /* ---------- Lobby extras ---------- */
+      .mp-players li.seat { background: none; border: 1px dashed rgba(255,255,255,.14); color: var(--mute); }
+      .mp-players li.seat .dot { background: rgba(255,255,255,.18); box-shadow: none; animation: seat 1.6s ease-in-out infinite; }
+      .mp-players li.seat .nm { font-weight: 500; font-style: italic; }
+      @keyframes seat { 50% { opacity: .25; } }
+      .mp-start { display: flex; flex-direction: column; gap: 8px; }
+      .mp-start .mp-note { text-align: center; font-size: 13px; }
+      .mp-pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warm); margin-right: 10px;
+        vertical-align: middle; animation: seat 1.2s ease-in-out infinite; }
+      #toasts { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px;
+        align-items: center; z-index: 30; pointer-events: none; }
+      .toast { padding: 10px 16px; border-radius: 999px; background: var(--glass); border: 1px solid var(--edge); font: 700 14px system-ui;
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); white-space: nowrap; }
+
+      /* ---------- Phone play ---------- */
+      #touch { display: none; }
+      html.touch, html.touch body { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+      .touch #touch { display: block; position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+      #touch button { pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+        color: #fff; border: 1px solid var(--edge); background: rgba(22,12,36,.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        transition: transform .08s, background .12s; }
+      #touch button.on { transform: scale(.93); background: rgba(255,255,255,.22); }
+      .tc-top { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: flex; gap: 8px; }
+      .tc-small { width: 44px; height: 44px; border-radius: 14px; font-size: 19px; line-height: 1; }
+      .tc-pad { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); width: 88px; height: 88px; border-radius: 50%; font-size: 30px; }
+      .tc-left { left: calc(16px + env(safe-area-inset-left)); }
+      .tc-right { left: calc(116px + env(safe-area-inset-left)); }
+      #touch[data-mode="tilt"] .tc-pad { width: 64px; height: 64px; font-size: 22px; opacity: .55; }
+      #touch[data-mode="tilt"] .tc-right { left: calc(92px + env(safe-area-inset-left)); }
+      #touch[data-mode="buttons"] .tc-center, #touch[data-mode="buttons"] .tc-flip, #touch[data-mode="buttons"] .tc-wheel { display: none; }
+      .tc-pedal { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); width: 104px; height: 104px; border-radius: 26px;
+        font: italic 900 15px system-ui; letter-spacing: 2px; }
+      .tc-nitro { right: calc(16px + env(safe-area-inset-right)); background: linear-gradient(160deg, rgba(58,140,255,.55), rgba(22,12,36,.45)) !important; }
+      .tc-brake { right: calc(130px + env(safe-area-inset-right)); background: linear-gradient(160deg, rgba(255,58,90,.5), rgba(22,12,36,.45)) !important; }
+      .tc-wheel { position: fixed; bottom: calc(22px + env(safe-area-inset-bottom)); left: 50%; width: 46px; height: 46px; border-radius: 50%;
+        border: 6px solid rgba(255,107,90,.75); transform: translateX(-50%); box-sizing: border-box; }
+      .tc-wheel::before { content: ""; position: absolute; left: 50%; top: -9px; width: 6px; height: 12px; margin-left: -3px; border-radius: 3px; background: #fff; }
+      .tc-rotate { display: none; }
+      @media (orientation: portrait) {
+        .touch .tc-rotate { display: block; position: fixed; top: 38%; left: 50%; transform: translateX(-50%); padding: 12px 18px; border-radius: 16px;
+          background: var(--glass); border: 1px solid var(--edge); font: 800 15px system-ui; white-space: nowrap; }
+      }
+      .touch #pairing, .touch #hint, .touch #sound, .touch #xhint { display: none !important; }
+      .touch #mpBtn { top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); padding: 9px 12px; font-size: 13px; }
+      .touch #hud { top: 62px; right: max(14px, env(safe-area-inset-right)); }
+      .touch #hud .total { font-size: 24px; }
+      .touch #board { top: 58px; left: max(12px, env(safe-area-inset-left)); zoom: .8; }
+      .touch #combo { zoom: .62; }
+      .touch #countdown { font-size: 110px; }
+      .touch #biome { font-size: 28px; }
+      .touch #camName { bottom: auto; top: 64px; }
+      .touch .mp-card { padding: 16px; }
+      /* Short screens (phones in landscape): compact lobby, the start button always in reach. */
+      .mp-card > .mp-start, .mp-card > .mp-actions, .mp-card > .mp-wait { position: sticky; bottom: -24px; margin: 0 -24px -24px;
+        padding: 12px 24px 24px; background: linear-gradient(to bottom, transparent, rgba(22,12,36,.96) 28%); }
+      @media (max-height: 540px) {
+        .mp-card { gap: 8px; padding: 12px 16px; }
+        .mp-card > .mp-start, .mp-card > .mp-actions, .mp-card > .mp-wait { bottom: -12px; margin: 0 -16px -12px; padding: 8px 16px 12px; }
+        .mp-room { font-size: 30px; letter-spacing: 6px; }
+        .mp-title.big { font-size: 30px; }
+        .mp-tile { padding: 10px; gap: 8px; }
+        .mp-mode { padding: 8px 10px; }
+        .mp-mode .md { display: none; }
+        .mp-mode .ic { font-size: 18px; grid-row: auto; }
+        .mp-players li { padding: 5px 8px; }
+        .mp-players li.seat ~ li.seat { display: none; }
+        .mp-go { padding: 12px; font-size: 16px; }
+        .mp-start .mp-note { font-size: 11px; }
+        .mp-rank li { padding: 7px 10px; }
+      }
     </style>
   </head>
   <body>
@@ -189,6 +264,8 @@
     <button id="mpBtn">👥 Çok oyunculu</button>
     <div id="board" aria-live="polite"></div>
     <div id="camName"></div>
+    <div id="touch"></div>
+    <div id="toasts" aria-live="polite"></div>
     <div id="mp"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

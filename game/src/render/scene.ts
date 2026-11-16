@@ -14,8 +14,10 @@ export type World = {
 };
 
 export function createWorld(container: HTMLElement): World {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // Phones: fewer pixels keeps the frame rate up (and the battery cooler); the low-poly look hides it.
+  const phone = matchMedia("(pointer: coarse)").matches;
+  const renderer = new THREE.WebGLRenderer({ antialias: !phone, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.5 : 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);

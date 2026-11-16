@@ -35,8 +35,13 @@ export type LobbyMsg = {
   /** Ids taking part in the current round. */
   racers: string[];
 };
-/** startIn < 0 means the round started that many ms ago (late join in free mode). */
-export type RoundMsg = { t: "round"; seed: number; mode: Mode; extreme: boolean; duration: number; startIn: number; grid: string[] };
+/**
+ * startIn < 0: the round started that many ms ago (late join).
+ * spawn: road distance to drop a late joiner at (beside the last car), or where a spectator should look (the leader).
+ */
+export type RoundMsg = {
+  t: "round"; seed: number; mode: Mode; extreme: boolean; duration: number; startIn: number; grid: string[]; spawn: number;
+};
 /** Car snapshot. Game → server without id; server → others with id. */
 export type StateMsg = {
   t: "state"; id?: string;
@@ -171,8 +176,9 @@ export function parseMessage(raw: string): Message | null {
     case "round": {
       if (!(Number.isInteger(o.seed) && Math.abs(o.seed) <= 2 ** 32) || !isMode(o.mode) || !isBool(o.extreme) || !fin(o.duration) || !fin(o.startIn)) return null;
       const grid = list(o.grid, (v) => (isId(v) ? v : null), MAX_PLAYERS);
-      if (!grid) return null;
-      return { t: "round", seed: o.seed | 0, mode: o.mode, extreme: o.extreme, duration: o.duration, startIn: o.startIn, grid };
+      const spawn = o.spawn === undefined ? 0 : o.spawn;
+      if (!grid || !fin(spawn) || spawn < 0) return null;
+      return { t: "round", seed: o.seed | 0, mode: o.mode, extreme: o.extreme, duration: o.duration, startIn: o.startIn, grid, spawn };
     }
     case "state": {
       if (o.id !== undefined && !isId(o.id)) return null;

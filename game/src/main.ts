@@ -8,10 +8,11 @@ import { ComboFx } from "./ui/comboFx";
 import { comboTier } from "./ui/comboTier";
 import { ExtremeHint } from "./ui/extremeHint";
 import { LobbyUi } from "./ui/lobby";
+import { TouchControls } from "./ui/touch";
 import { comboFeel } from "./audio/intensity";
 import { animate } from "motion";
 import { createWorld } from "./render/scene";
-import { RoadMesh, setRoadColors } from "./render/roadMesh";
+import { RoadMesh, setRoadColors, CHUNK_POINTS } from "./render/roadMesh";
 import { biomeAt as biomeAtRaw, blendPalette, BIOME_LENGTH } from "./world/biomes";
 import { Sound } from "./audio/sound";
 import { surfaceAt } from "./audio/tires";
@@ -19,7 +20,7 @@ import { ChaseCamera, CAMERA_MODES, CAMERA_NAMES, type CameraMode } from "./rend
 import { CarModel, rearWheels } from "./render/carModel";
 import { RemoteCars } from "./render/remoteCars";
 import { SkidMarks, Smoke } from "./render/effects";
-import { Road, BEHIND } from "./sim/road";
+import { Road, BEHIND, STEP } from "./sim/road";
 import { createCar, stepCar, speedOf, slipAngle, type CarInput } from "./sim/car";
 import { collide } from "./sim/collide";
 import { ScoreSystem } from "./sim/score";
@@ -65,7 +66,12 @@ async function boot() {
   const input = new InputState();
   const kb = new Keyboard();
   let controllerConnected = false;
-  showPairing(wsUrl, conn.pair);
+  // On a phone the phone itself is the wheel: on-screen controls, no pairing QR.
+  const touch = new TouchControls({ onCamera: () => nextCamera(), onMenu: () => lobbyUi.toggle(!lobbyUi.visible) });
+  const pair = (code?: string) => {
+    if (!touch.enabled) showPairing(wsUrl, code);
+  };
+  pair(conn.pair);
 
   const session = new Session(conn, {
     lobby: () => {
@@ -81,10 +87,10 @@ async function boot() {
 
   conn.onMessage((m) => {
     if (m.t === "pair") {
-      if (!controllerConnected) showPairing(wsUrl, m.code);
+      if (!controllerConnected) pair(m.code);
     } else if (m.t === "peer" && m.role === "controller") {
       controllerConnected = m.connected;
-      m.connected ? hidePairing() : showPairing(wsUrl, conn.pair);
+      m.connected ? hidePairing() : pair(conn.pair);
     } else if (m.t === "input") input.apply(m, performance.now());
     else if (m.t === "calibrate") input.requestCalibrate();
     else if (m.t === "toggleMode") toggleExtreme();
@@ -216,7 +222,10 @@ async function boot() {
   let standings: ReturnType<Session["standings"]> = [];
   let current: CarInput = { steer: 0, brake: false, nitro: false };
 
-  const haptic = (kind: "comboUp" | "comboEnd" | "reset" | "drift") => conn.send({ t: "haptic", kind });
+  const haptic = (kind: "comboUp" | "comboEnd" | "reset" | "drift") => {
+    conn.send({ t: "haptic", kind });
+    touch.vibrate(kind);
+  };
 
   /** A multiplayer round: everybody gets the same seed, so the same road, scenery and crowd. */
   function startRound(r: Round) {
@@ -237,33 +246,65 @@ async function boot() {
     world.scene.remove(carView.root);
     carView = new CarModel({ paint: me?.color });
     world.scene.add(carView.root);
-    const slot = gridSlot(Math.max(0, r.grid.indexOf(session.me ?? "")));
-    car = createCar(slot.x, slot.z, 0, 0);
-    roadMesh.addPoints(road.ensureAhead(0));
-    carS = 0;
+    if (r.spawn > 0) {
+      // Joining a round already under way: build the road up to where the others are. Start the mesh on a
+      // chunk boundary so scenery and crowds come out exactly as everybody else sees them.
+      road.ensureAhead(r.spawn);
+      const chunk = CHUNK_POINTS * STEP;
+      const from = Math.max(0, Math.floor((r.spawn - BEHIND) / chunk) * chunk);
+      road.trimBehind(from + BEHIND);
+      roadMesh.addPoints(road.points.slice());
+      const p = road.pointAt(r.spawn) ?? road.points[0];
+      const lane = (session.racers.size % 2 === 0 ? 1 : -1) * 4;
+      const nx = Math.cos(p.heading), nz = -Math.sin(p.heading);
+      car = createCar(p.x + nx * lane, p.z + nz * lane, p.heading, session.spectating ? 0 : TUNING.cruiseSpeed * 0.7);
+      carS = r.spawn;
+    } else {
+      const slot = gridSlot(Math.max(0, r.grid.indexOf(session.me ?? "")));
+      car = createCar(slot.x, slot.z, 0, 0);
+      roadMesh.addPoints(road.ensureAhead(0));
+      carS = 0;
+    }
     biomeIndex = -1;
     wasFinished = false;
     chase.snap();
     started = true;
     pauseState = { running: true, paused: false, countdown: null };
     remoteCars.sync(session.players, session.me);
-    if (session.racing) lobbyUi.onRound();
-    hud.showBiome(MODE_INFO[r.mode].name.toUpperCase());
+    if (session.racing || session.spectating) lobbyUi.onRound();
+    hud.showBiome(session.spectating ? "YARIŞI İZLİYORSUN" : r.spawn > 0 ? "TURA KATILDIN!" : MODE_INFO[r.mode].name.toUpperCase());
   }
 
   function simStep(now: number) {
     let stale = false;
     if (kb.active && !lobbyUi.visible) current = kb.read();
+    else if (touch.enabled) current = lobbyUi.visible ? { steer: 0, brake: false, nitro: false } : touch.read();
     else {
       const r = input.read(now, SIM_DT);
       stale = r.stale;
       current = r;
     }
     input.consumeCalibrate(); // calibration happens on the phone; nothing to do here
+
+    if (session.spectating) {
+      // A race I joined late: ride along with the leader until the next round.
+      const lead = session.leader(now);
+      if (lead) car = { ...lead.car };
+      hud.message("Yarış sürüyor — lideri izliyorsun, sonraki turda sen de varsın");
+      const near = road.nearest(car.x, car.z);
+      carS = near.point.s;
+      onRoad = true;
+      roadMesh.addPoints(road.ensureAhead(carS));
+      road.trimBehind(carS);
+      roadMesh.trim(carS - BEHIND);
+      crowd.trim(carS - BEHIND - 50);
+      crowdView.sync(crowd.people);
+      return;
+    }
     const mp = session.racing;
     if (!started) {
-      started = kb.active || !stale;
-      hud.message(started ? null : "Başlamak için telefonu bağla ya da ok tuşlarına bas");
+      started = kb.active || !stale || touch.used;
+      hud.message(started ? null : touch.enabled ? "Başlamak için bir düğmeye dokun ya da telefonu eğ" : "Başlamak için telefonu bağla ya da ok tuşlarına bas");
       if (!started) return;
     }
     if (!kb.active && !stale) usedController = true;
@@ -391,7 +432,7 @@ async function boot() {
       acc -= SIM_DT;
     }
 
-    carView.root.visible = chase.showCar;
+    carView.root.visible = chase.showCar && !session.spectating;
     carView.update(car, current, dt);
     smoke.update(dt);
     chase.update(car, dt, current.nitro);
@@ -489,7 +530,7 @@ async function boot() {
     // Live standings (5 Hz is plenty for DOM work).
     if (now - lastBoard > 200) {
       lastBoard = now;
-      if (inRound && session.racers.has(session.me ?? "")) {
+      if (inRound) {
         standings = session.standings({ score: score.total + score.pending * score.multiplier, s: carS });
         lobbyUi.updateBoard(standings, session.round!.mode, session.timeLeft(now), carS);
       } else {

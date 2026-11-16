@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { Hub, COUNTDOWN_MS, type Conn } from "../src/hub";
+import { Hub, COUNTDOWN_MS, SPAWN_BEHIND, type Conn } from "../src/hub";
 import { MAX_PLAYERS, RACE_LENGTH, RACE_GRACE, type Message, type StateMsg } from "@drift/shared";
 
 class Fake implements Conn {
@@ -228,13 +228,45 @@ describe("rounds", () => {
     expect(late.last("results")!.ranking).toHaveLength(2);
   });
 
-  it("late joiners in a timed round wait for the next one", () => {
-    const { host, code } = room(1);
+  it("late joiners drop into a running score round next to the last car", () => {
+    const { host, others, code } = room(2);
     hub.message(host, { t: "start" });
+    now += COUNTDOWN_MS + 30_000;
+    hub.message(host, state(1500, 300));
+    now += 40;
+    hub.message(others[0], state(900, 100));
     const late = game();
     hub.message(late, { t: "join", room: code, name: "Late" });
-    expect(late.last("round")).toBeUndefined();
+    const r = late.last("round")!;
+    expect(r.startIn).toBeLessThan(0);
+    expect(r.spawn).toBe(900 - SPAWN_BEHIND);
+    const lobby = late.last("lobby")!;
+    expect(lobby.racers).toContain(lobby.you);
+    expect(host.last("lobby")!.players.map((p) => p.name)).toContain("Late");
+  });
+
+  it("late joiners of a race watch the leader and race next time", () => {
+    const { host, code } = room(1);
+    hub.message(host, { t: "config", mode: "race", extreme: false, duration: 180 });
+    hub.message(host, { t: "start" });
+    now += COUNTDOWN_MS + 20_000;
+    hub.message(host, state(2100));
+    const late = game();
+    hub.message(late, { t: "join", room: code, name: "Late" });
+    expect(late.last("round")!.spawn).toBe(2100);
     expect(late.last("lobby")!.racers).not.toContain(late.last("lobby")!.you);
+    hub.message(host, { t: "end" });
+    hub.message(host, { t: "start" });
+    expect(late.last("lobby")!.racers).toContain(late.last("lobby")!.you);
+  });
+
+  it("the host can start alone and others still get in", () => {
+    const { host, code } = room(1);
+    hub.message(host, { t: "start" });
+    expect(host.last("round")!.grid).toHaveLength(1);
+    const g = game();
+    hub.message(g, { t: "join", room: code, name: "Friend" });
+    expect(g.last("round")).toBeDefined();
   });
 });
 

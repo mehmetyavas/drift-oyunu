@@ -4,7 +4,8 @@ import { mulberry32 } from "../sim/rng";
 import type { Props } from "../world/biomes";
 import { makeProp, makeLamp } from "./props";
 
-const CHUNK_POINTS = 25; // 50 m
+/** Points per scenery chunk (50 m). Chunks start at multiples of this, which keeps scenery identical for everyone. */
+export const CHUNK_POINTS = 25;
 const asphalt = new THREE.MeshLambertMaterial({ color: 0x3a3340, side: THREE.DoubleSide });
 const paint = new THREE.MeshBasicMaterial({ color: 0xf4e6d8, side: THREE.DoubleSide });
 

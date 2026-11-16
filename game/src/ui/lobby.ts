@@ -1,6 +1,6 @@
 import { animate } from "motion";
 import {
-  MODES, MODE_INFO, DURATIONS, RACE_LENGTH, NAME_MAX, cleanName, isRoomCode,
+  MODES, MODE_INFO, DURATIONS, RACE_LENGTH, NAME_MAX, MAX_PLAYERS, cleanName, isRoomCode,
   type ErrorCode, type Mode, type ResultsMsg,
 } from "@drift/shared";
 import type { Session } from "../net/session";
@@ -90,11 +90,36 @@ export class LobbyUi {
     if (open) animate(this.root, { opacity: [0, 1], scale: [0.96, 1] }, { duration: 0.25, ease: [0.2, 0.9, 0.3, 1.2] });
   }
 
+  private known = new Map<string, string>();
+  private lastPhase: string | null = null;
+
+  /** "X katıldı / ayrıldı" toasts, so nobody misses a friend arriving mid-round. */
+  private announce(): void {
+    const now = new Map(this.s.players.map((p) => [p.id, p.name]));
+    if (this.known.size && this.s.inRoom) {
+      for (const [id, name] of now) if (!this.known.has(id) && id !== this.s.me) this.toast(`👋 ${name} odaya katıldı`);
+      for (const [id, name] of this.known) if (!now.has(id)) this.toast(`${name} ayrıldı`);
+    }
+    this.known = this.s.inRoom ? now : new Map();
+  }
+
+  private toast(text: string): void {
+    const box = document.getElementById("toasts")!;
+    const el = h("div", { class: "toast", role: "status" }, text);
+    box.append(el);
+    animate(el, { opacity: [0, 1], y: [-12, 0] }, { duration: 0.25 });
+    setTimeout(() => animate(el, { opacity: 0 }, { duration: 0.4 }).then(() => el.remove()), 3200);
+  }
+
   onLobby(): void {
+    this.announce();
     this.busy = false;
-    if (this.s.phase === "racing" && this.s.racing) this.open = false;
+    // Close only on the switch into a round; somebody joining mid-round must not slam a panel the player opened.
+    const entering = this.s.phase === "racing" && this.lastPhase !== "racing";
+    if (entering && (this.s.racing || this.s.spectating) && !this.showResults) this.open = false;
     if (!this.s.inRoom) this.showResults = false;
-    else if (!this.s.racing) this.open = true;
+    else if (this.s.phase !== "racing" && this.lastPhase !== this.s.phase) this.open = true;
+    this.lastPhase = this.s.inRoom ? this.s.phase : null;
     this.render();
   }
 
@@ -189,6 +214,7 @@ export class LobbyUi {
       navigator.clipboard?.writeText(link).then(() => (copy.textContent = "Kopyalandı ✓"), () => (copy.textContent = link));
     } }, "Davet linkini kopyala");
 
+    const empty = Math.max(0, Math.min(MAX_PLAYERS, Math.max(4, s.players.length + 1)) - s.players.length);
     const players = h("ul", { class: "mp-players" },
       ...s.players.map((p) =>
         h("li", { class: p.id === s.me ? "me" : "" },
@@ -196,7 +222,8 @@ export class LobbyUi {
           h("span", { class: "nm" }, p.name),
           p.id === s.host ? h("span", { class: "tag" }, "👑 kurucu") : null,
           p.id === s.me ? h("span", { class: "tag you" }, "sen") : null,
-          s.phase === "racing" && !s.racers.has(p.id) ? h("span", { class: "tag" }, "sırada") : null)));
+          s.phase === "racing" && !s.racers.has(p.id) ? h("span", { class: "tag" }, "izliyor") : null)),
+      ...Array.from({ length: empty }, () => h("li", { class: "seat" }, h("span", { class: "dot" }), h("span", { class: "nm" }, "Oyuncu bekleniyor…"))));
 
     const modes = h("div", { class: "mp-modes" },
       ...MODES.map((m) =>
@@ -228,11 +255,20 @@ export class LobbyUi {
         h("button", { class: "mp-btn", onclick: () => this.toggle(false) }, "Sürüşe dön"),
         host ? h("button", { class: "mp-btn mp-danger", onclick: () => s.end() }, "Turu bitir") : null);
     } else if (s.phase === "racing") {
-      action = h("div", { class: "mp-wait" }, "Tur sürüyor, bitince sen de katılacaksın…");
+      action = h("div", { class: "mp-actions" },
+        h("div", { class: "mp-wait" }, "Yarış sürüyor: lideri izliyorsun, sonraki turda sen de başlarsın."),
+        h("button", { class: "mp-btn", onclick: () => this.toggle(false) }, "İzle"));
     } else if (host) {
-      action = h("button", { class: "mp-btn mp-primary mp-go", onclick: () => s.start() }, `BAŞLAT · ${s.players.length} oyuncu`);
+      const alone = s.players.length === 1;
+      action = h("div", { class: "mp-start" },
+        h("button", { class: "mp-btn mp-primary mp-go", onclick: () => s.start() },
+          alone ? "TEK BAŞINA BAŞLA" : `BAŞLAT · ${s.players.length} OYUNCU`),
+        h("div", { class: "mp-note" },
+          alone
+            ? "İstersen arkadaşlarını bekle: davet linkini gönder, gelen herkes burada görünür. Başlattıktan sonra da katılabilirler (Yarış hariç)."
+            : MODE_INFO[s.mode].race ? "Yarış başlayınca gelenler sonraki turu bekler." : "Tur başladıktan sonra gelenler de araya katılabilir."));
     } else {
-      action = h("div", { class: "mp-wait" }, "Kurucunun başlatması bekleniyor…");
+      action = h("div", { class: "mp-wait" }, h("span", { class: "mp-pulse" }), "Kurucunun başlatması bekleniyor…");
     }
 
     return h("div", { class: "mp-card mp-wide", role: "dialog", "aria-label": "Lobi" },
