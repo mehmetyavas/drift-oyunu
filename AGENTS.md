@@ -32,10 +32,12 @@ Do not start long-running servers (`npm start`, `npm run controller`) unless the
 | Path | What |
 |---|---|
 | `shared/` | Message protocol and steering math (pure TS) |
-| `server/` | HTTP + WebSocket relay; serves `game/dist` on port 8080 |
+| `server/` | HTTP + WebSocket relay; serves `game/dist` on port 8080. `hub.ts` = pairing codes + multiplayer rooms (pure, tested) |
 | `game/src/sim/` | Pure game logic: road, car physics, score, recovery, crowd, police, pause |
 | `game/src/render/`, `game/src/ui/`, `game/src/audio/` | Three.js scene, HUD, Web Audio synthesis |
 | `controller/` | Expo (React Native) steering-wheel app |
+| `game/src/net/session.ts`, `ui/lobby.ts` | Multiplayer client: room state, lobby/results UI, remote-car interpolation (`net/remote.ts`) |
+| `Dockerfile`, `deploy/` | Production image and Traefik/Coolify compose (`deploy/deploy.sh`) |
 | `docs/superpowers/` | Design spec and implementation plan |
 
 ## Working on it

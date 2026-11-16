@@ -92,6 +92,13 @@ export class RoadMesh {
     this.chunks.push({ endS: pts[pts.length - 1].s, group, owned });
   }
 
+  /** Drop every chunk and start over on a new seed (multiplayer rounds share one track). */
+  reset(seed: number): void {
+    this.trim(Infinity);
+    this.pending = [];
+    this.seed = seed;
+  }
+
   trim(beforeS: number): void {
     while (this.chunks.length && this.chunks[0].endS < beforeS) {
       const c = this.chunks.shift()!;

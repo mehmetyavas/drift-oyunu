@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Drift</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8F%81%3C/text%3E%3C/svg%3E" />
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1026; font-family: system-ui, sans-serif; color: #fff; }
       #app canvas { display: block; }
@@ -57,6 +58,108 @@
       #sound { position: fixed; left: 24px; top: 20px; padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer;
         background: rgba(0,0,0,.55); color: #fff; font-size: 15px; }
       #hint { position: fixed; left: 24px; top: 64px; font-size: 12px; opacity: .6; }
+
+      /* ---------- Multiplayer ---------- */
+      :root { --glass: rgba(22, 12, 36, .62); --edge: rgba(255,255,255,.12); --hot: #ff3a6a; --warm: #ff8a2a;
+        --ink: #fff; --mute: rgba(255,255,255,.62); --grad: linear-gradient(100deg, var(--hot), var(--warm)); }
+      #mpBtn { position: fixed; left: 24px; top: 92px; padding: 11px 16px; border-radius: 14px; cursor: pointer; font: 800 14px system-ui;
+        letter-spacing: .5px; color: var(--ink); background: var(--glass); border: 1px solid var(--edge);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .15s, border-color .15s; }
+      #mpBtn:hover { transform: translateY(-1px); border-color: rgba(255,138,42,.6); }
+      #mp { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+      .mp-scrim { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(10,4,20,.35), rgba(10,4,20,.75)); }
+      .mp-card { position: relative; width: min(440px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 24px; border-radius: 24px;
+        background: var(--glass); border: 1px solid var(--edge); box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+        backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); display: flex; flex-direction: column; gap: 14px; }
+      .mp-wide { width: min(860px, 100%); }
+      .mp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .mp-headr { display: flex; gap: 8px; flex-wrap: wrap; }
+      .mp-title { font: italic 900 26px system-ui; letter-spacing: 3px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .mp-title.big { font-size: 44px; letter-spacing: 2px; }
+      .mp-sub, .mp-foot, .mp-note, .mp-wait { color: var(--mute); font-size: 14px; margin: 0; }
+      .mp-foot { font-size: 12px; }
+      .mp-wait { text-align: center; padding: 12px; }
+      .mp-kicker { font: 800 11px system-ui; letter-spacing: 2.5px; color: var(--mute); }
+      .mp-room { font: italic 900 52px/1 ui-monospace, monospace; letter-spacing: 10px; margin-top: 4px; }
+      .mp-x { background: none; border: 0; color: var(--mute); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+      .mp-x:hover { color: var(--ink); background: rgba(255,255,255,.08); }
+      .mp-input { width: 100%; box-sizing: border-box; padding: 13px 15px; border-radius: 14px; border: 1px solid var(--edge);
+        background: rgba(0,0,0,.28); color: var(--ink); font: 600 16px system-ui; outline: none; transition: border-color .15s, box-shadow .15s; }
+      .mp-input:focus { border-color: var(--warm); box-shadow: 0 0 0 3px rgba(255,138,42,.25); }
+      .mp-code { text-transform: uppercase; letter-spacing: 6px; text-align: center; font-family: ui-monospace, monospace; font-weight: 800; }
+      .mp-grid2 { display: grid; grid-template-columns: 1fr 1.3fr; gap: 10px; }
+      .mp-join { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+      .mp-btn { padding: 13px 18px; border-radius: 14px; border: 1px solid var(--edge); background: rgba(255,255,255,.07); color: var(--ink);
+        font: 800 15px system-ui; cursor: pointer; transition: transform .12s, background .15s, box-shadow .15s; }
+      .mp-btn:hover:not(:disabled) { background: rgba(255,255,255,.13); transform: translateY(-1px); }
+      .mp-btn:active:not(:disabled) { transform: translateY(1px) scale(.98); }
+      .mp-btn:disabled { opacity: .45; cursor: default; }
+      .mp-btn:focus-visible, .mp-mode:focus-visible, .mp-chip:focus-visible, .mp-seg button:focus-visible, .mp-toggle:focus-visible
+        { outline: 2px solid var(--warm); outline-offset: 2px; }
+      .mp-primary { border: 0; background: var(--grad); box-shadow: 0 8px 26px rgba(255,58,106,.35); }
+      .mp-primary:hover:not(:disabled) { background: var(--grad); box-shadow: 0 10px 34px rgba(255,58,106,.55); }
+      .mp-danger { border-color: rgba(255,74,74,.5); color: #ffb0b0; }
+      .mp-go { width: 100%; padding: 18px; font: italic 900 20px system-ui; letter-spacing: 3px; }
+      .mp-chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--edge); background: rgba(0,0,0,.25); color: var(--ink);
+        font: 700 12px system-ui; cursor: pointer; }
+      .mp-chip:hover { border-color: rgba(255,255,255,.3); }
+      .mp-err { padding: 10px 14px; border-radius: 12px; background: rgba(255,58,74,.15); border: 1px solid rgba(255,58,74,.4); color: #ffc2c2; font-size: 14px; }
+      .mp-bento { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 12px; }
+      .mp-tile { padding: 16px; border-radius: 18px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+        display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      .mp-players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+      .mp-players li { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 12px; background: rgba(0,0,0,.18); min-width: 0; }
+      .mp-players li.me { background: rgba(255,138,42,.12); }
+      .mp-players .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+      .mp-players .tag { font-size: 11px; color: var(--mute); white-space: nowrap; }
+      .mp-players .tag.you { color: var(--warm); font-weight: 800; }
+      .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; }
+      .mp-modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .mp-mode { text-align: left; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.2);
+        color: var(--ink); cursor: pointer; display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 2px; transition: border-color .15s, background .15s, transform .12s; }
+      .mp-mode:hover:not(:disabled) { border-color: rgba(255,255,255,.25); transform: translateY(-1px); }
+      .mp-mode:disabled { cursor: default; }
+      .mp-mode.on { border-color: var(--warm); background: linear-gradient(140deg, rgba(255,58,106,.22), rgba(255,138,42,.12)); }
+      .mp-mode .ic { grid-row: span 2; font-size: 24px; align-self: center; }
+      .mp-mode .mn { font: 800 15px system-ui; }
+      .mp-mode .md { font-size: 12px; color: var(--mute); line-height: 1.35; }
+      .mp-opts { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+      .mp-seg { display: inline-flex; padding: 3px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--edge); }
+      .mp-seg button { padding: 8px 14px; border: 0; border-radius: 9px; background: none; color: var(--mute); font: 800 13px system-ui; cursor: pointer; }
+      .mp-seg button.on { background: rgba(255,255,255,.14); color: var(--ink); }
+      .mp-toggle { padding: 9px 14px; border-radius: 12px; border: 1px solid var(--edge); background: rgba(0,0,0,.28); color: var(--mute);
+        font: italic 900 13px system-ui; letter-spacing: 2px; cursor: pointer; }
+      .mp-toggle.on { color: #fff; border-color: transparent; background: linear-gradient(90deg,#ff2a3a,#ff8a2a); box-shadow: 0 0 18px rgba(255,58,42,.55); }
+      .mp-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+      .mp-results { width: min(520px, 100%); text-align: center; }
+      .mp-results .mp-actions { justify-content: center; }
+      .mp-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+      .mp-rank li { --c: #fff; display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px; padding: 12px 14px;
+        border-radius: 14px; background: rgba(0,0,0,.25); border-left: 4px solid var(--c); }
+      .mp-rank li.me { background: rgba(255,138,42,.14); }
+      .mp-rank .pos { font: 900 22px system-ui; text-align: center; }
+      .mp-rank .nm { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mp-rank .val { font: 800 16px ui-monospace, monospace; }
+      #board { position: fixed; left: 24px; top: 92px; display: none; min-width: 210px; padding: 10px; border-radius: 16px; background: var(--glass);
+        border: 1px solid var(--edge); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); pointer-events: none; }
+      #board .bd-head { font: italic 900 22px ui-monospace, monospace; text-align: center; padding: 2px 0 8px; letter-spacing: 1px; }
+      #board .bd-head.hot { color: #ff5a5a; animation: beat .5s ease-in-out infinite; }
+      #board .bd-row { display: grid; grid-template-columns: 18px 12px 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 9px; font-size: 14px; }
+      #board .bd-row.me { background: rgba(255,138,42,.18); }
+      #board .pos { font-weight: 900; opacity: .7; }
+      #board .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+      #board .val { font: 700 13px ui-monospace, monospace; opacity: .85; }
+      #camName { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px; background: var(--glass);
+        border: 1px solid var(--edge); font: italic 900 14px system-ui; letter-spacing: 3px; opacity: 0; pointer-events: none; transition: opacity .3s; }
+      @media (max-width: 720px) {
+        .mp-bento, .mp-grid2 { grid-template-columns: 1fr; }
+        .mp-modes { grid-template-columns: 1fr; }
+        .mp-room { font-size: 40px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .mp-btn, .mp-mode, #mpBtn { transition: none; }
+        #board .bd-head.hot { animation: none; }
+      }
     </style>
   </head>
   <body>
@@ -82,7 +185,11 @@
       <div class="pts"></div>
     </div>
     <button id="sound">🔊 Sesi aç</button>
-    <div id="hint">M: sesi kapat/aç</div>
+    <div id="hint">M: ses · C: kamera · Esc: çok oyunculu</div>
+    <button id="mpBtn">👥 Çok oyunculu</button>
+    <div id="board" aria-live="polite"></div>
+    <div id="camName"></div>
+    <div id="mp"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

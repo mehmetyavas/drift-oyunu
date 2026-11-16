@@ -28,7 +28,9 @@ export function useControllerSocket(url: string | null, onHaptic: (k: HapticKind
       ws.current = s;
       lastMsg = Date.now();
       s.onopen = () => {
-        s.send(encode({ t: "hello", role: "controller" }));
+        // The game's QR carries its pairing code (…/?pair=XXXXXX); without one the server picks the newest game.
+        const pair = /[?&]pair=([A-Z0-9]{6})\b/.exec(url)?.[1];
+        s.send(encode(pair ? { t: "hello", role: "controller", pair } : { t: "hello", role: "controller" }));
         lastMsg = Date.now();
         setConnected(true);
       };

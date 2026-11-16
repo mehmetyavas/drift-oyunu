@@ -1,0 +1,38 @@
+# Runs Drift behind an existing Coolify/Traefik proxy (network "coolify", resolver "letsencrypt").
+# DOMAIN defaults to drift.restopanel.com.tr; override with DOMAIN=... in deploy/.env.
+services:
+  drift:
+    build:
+      context: ..
+    image: drift-oyunu:latest
+    container_name: drift-oyunu
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 192m
+    pids_limit: 128
+    environment:
+      PORT: "8080"
+    networks: [coolify]
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.middlewares.drift-https.redirectscheme.scheme: https
+      traefik.http.routers.drift-http.entrypoints: http
+      traefik.http.routers.drift-http.rule: Host(`${DOMAIN:-drift.restopanel.com.tr}`)
+      traefik.http.routers.drift-http.middlewares: drift-https
+      traefik.http.routers.drift.entrypoints: https
+      traefik.http.routers.drift.rule: Host(`${DOMAIN:-drift.restopanel.com.tr}`)
+      traefik.http.routers.drift.tls: "true"
+      traefik.http.routers.drift.tls.certresolver: letsencrypt
+      traefik.http.services.drift.loadbalancer.server.port: "8080"
+
+networks:
+  coolify:
+    external: true

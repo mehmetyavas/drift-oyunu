@@ -21,6 +21,13 @@ export class SkidMarks {
     scene.add(mesh);
   }
 
+  clear(): void {
+    this.pos.fill(0);
+    this.next = 0;
+    this.last.fill(null);
+    this.geo.attributes.position.needsUpdate = true;
+  }
+
   /** Pass null to break the trail (not drifting). */
   update(wheels: ([number, number] | null)[]): void {
     let dirty = false;

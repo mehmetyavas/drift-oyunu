@@ -1,11 +1,13 @@
 import { Connection } from "./net/connection";
 import { InputState } from "./net/inputState";
 import { Keyboard } from "./net/keyboard";
+import { Session, type Round } from "./net/session";
 import { showPairing, hidePairing } from "./ui/pairing";
 import { Hud, setRecoveryFx } from "./ui/hud";
 import { ComboFx } from "./ui/comboFx";
 import { comboTier } from "./ui/comboTier";
 import { ExtremeHint } from "./ui/extremeHint";
+import { LobbyUi } from "./ui/lobby";
 import { comboFeel } from "./audio/intensity";
 import { animate } from "motion";
 import { createWorld } from "./render/scene";
@@ -13,11 +15,13 @@ import { RoadMesh, setRoadColors } from "./render/roadMesh";
 import { biomeAt as biomeAtRaw, blendPalette, BIOME_LENGTH } from "./world/biomes";
 import { Sound } from "./audio/sound";
 import { surfaceAt } from "./audio/tires";
-import { ChaseCamera } from "./render/carView";
+import { ChaseCamera, CAMERA_MODES, CAMERA_NAMES, type CameraMode } from "./render/carView";
 import { CarModel, rearWheels } from "./render/carModel";
+import { RemoteCars } from "./render/remoteCars";
 import { SkidMarks, Smoke } from "./render/effects";
 import { Road, BEHIND } from "./sim/road";
 import { createCar, stepCar, speedOf, slipAngle, type CarInput } from "./sim/car";
+import { collide } from "./sim/collide";
 import { ScoreSystem } from "./sim/score";
 import { Recovery } from "./sim/recovery";
 import { DriftBuzz } from "./sim/driftBuzz";
@@ -29,12 +33,31 @@ import { TUNING, EXTREME } from "./sim/tuning";
 import { mulberry32 } from "./sim/rng";
 import { engineState } from "./audio/params";
 import { CrowdView } from "./render/crowdView";
+import { MODE_INFO, gridSlot } from "@drift/shared";
 
 const SIM_DT = 1 / 60;
 const BEST_KEY = "drift.best";
+const CAM_KEY = "drift.camera";
 /** Debug: ?biome=N starts in the Nth biome. */
 const BIOME_OFFSET = Number(new URLSearchParams(location.search).get("biome") ?? 0) * BIOME_LENGTH;
 const biomeAt = (s: number) => biomeAtRaw(s + BIOME_OFFSET);
+/** Bumps harder than this (m/s closing speed) break the running combo. */
+const COMBO_BREAK_IMPACT = 7;
+
+function load(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function store(key: string, v: string): void {
+  try {
+    localStorage.setItem(key, v);
+  } catch {
+    /* private mode */
+  }
+}
 
 async function boot() {
   const { wsUrl } = (await (await fetch("/config.json")).json()) as { wsUrl: string };
@@ -42,42 +65,68 @@ async function boot() {
   const input = new InputState();
   const kb = new Keyboard();
   let controllerConnected = false;
-  showPairing(wsUrl);
+  showPairing(wsUrl, conn.pair);
+
+  const session = new Session(conn, {
+    lobby: () => {
+      lobbyUi.onLobby();
+      remoteCars.sync(session.players, session.me);
+      if (!session.inRoom) remoteCars.clear();
+    },
+    round: (r) => startRound(r),
+    results: () => lobbyUi.onResults(),
+    error: (code) => lobbyUi.onError(code),
+  });
+  const lobbyUi = new LobbyUi(session);
+
   conn.onMessage((m) => {
-    if (m.t === "peer" && m.role === "controller") {
+    if (m.t === "pair") {
+      if (!controllerConnected) showPairing(wsUrl, m.code);
+    } else if (m.t === "peer" && m.role === "controller") {
       controllerConnected = m.connected;
-      m.connected ? hidePairing() : showPairing(wsUrl);
+      m.connected ? hidePairing() : showPairing(wsUrl, conn.pair);
     } else if (m.t === "input") input.apply(m, performance.now());
     else if (m.t === "calibrate") input.requestCalibrate();
     else if (m.t === "toggleMode") toggleExtreme();
+    else if (m.t === "camera") nextCamera();
   });
 
-  // Extreme mode: faster car, sharper upcoming road, double points.
+  // Extreme mode: faster car, sharper upcoming road, double points. In a room it is a room setting.
   let extreme = false;
   const badge = document.getElementById("extreme")!;
   const vignetteEl = document.getElementById("vignette")!;
   const linesEl = document.getElementById("lines")!;
   const xhintEl = document.getElementById("xhint")!;
+  const camNameEl = document.getElementById("camName")!;
   const xhint = new ExtremeHint();
   let feelM = 0;
   let bankedCount = 0;
   let hintShown = false;
-  function toggleExtreme() {
-    extreme = !extreme;
+  function setExtreme(on: boolean) {
+    extreme = on;
     score.pointsScale = extreme ? 2 : 1;
     badge.style.display = extreme ? "block" : "none";
+  }
+  function toggleExtreme() {
+    if (session.inRoom) {
+      hud.showBiome("EXTREME ODADAN AYARLANIR");
+      return;
+    }
+    setExtreme(!extreme);
     hud.showBiome(extreme ? "EXTREME MOD" : "NORMAL MOD");
   }
   addEventListener("keydown", (e) => {
     if (e.key === "e" || e.key === "E") toggleExtreme();
+    else if (e.key === "c" || e.key === "C") nextCamera();
   });
 
   const world = createWorld(document.getElementById("app")!);
-  const seed = (Math.random() * 2 ** 31) | 0;
-  const road = new Road(seed, (s) => {
+  let seed = (Math.random() * 2 ** 31) | 0;
+  const roadStyle = (s: number) => {
     const st = biomeAt(s).a.road;
     return extreme ? { curvatureScale: Math.min(1, st.curvatureScale * 1.3), straightChance: st.straightChance * 0.6 } : st;
-  });
+  };
+  let road = new Road(seed, roadStyle);
   const crowd = new Crowd(road.halfWidth);
   const crowdView = new CrowdView(world.scene);
   (window as unknown as { __crowd: Crowd }).__crowd = crowd; // debug handle
@@ -99,7 +148,7 @@ async function boot() {
   const exhaust = new Exhaust();
   const police = new PoliceForce();
   // Debug handles (used by browser checks).
-  Object.assign(window, { __police: police, __alert: () => police.alert(car, road), __car: () => car });
+  Object.assign(window, { __police: police, __alert: () => police.alert(car, road), __car: () => car, __session: session });
   const policeViews = new Map<PoliceUnit, CarModel>();
   const policeFx = document.getElementById("police")!;
   let prevPoliceDist = Infinity;
@@ -123,15 +172,27 @@ async function boot() {
   let onRoad = true;
   roadMesh.addPoints(road.ensureAhead(0));
 
-  const carView = new CarModel();
+  let carView = new CarModel();
   world.scene.add(carView.root);
+  const remoteCars = new RemoteCars(world.scene);
   const chase = new ChaseCamera(world.camera);
+  const savedCam = load(CAM_KEY) as CameraMode | null;
+  if (savedCam && CAMERA_MODES.includes(savedCam)) chase.setMode(savedCam);
+  let camTimer: ReturnType<typeof setTimeout> | undefined;
+  function nextCamera() {
+    const m = chase.next();
+    store(CAM_KEY, m);
+    camNameEl.textContent = `🎥 ${CAMERA_NAMES[m]}`;
+    camNameEl.style.opacity = "1";
+    clearTimeout(camTimer);
+    camTimer = setTimeout(() => (camNameEl.style.opacity = "0"), 1400);
+  }
   const skids = new SkidMarks(world.scene, 2);
   const smoke = new Smoke(world.scene);
   const hud = new Hud();
   const combo = new ComboFx();
-  const score = new ScoreSystem(Number(localStorage.getItem(BEST_KEY)) || 0);
-  const recovery = new Recovery();
+  let score = new ScoreSystem(Number(load(BEST_KEY)) || 0);
+  let recovery = new Recovery();
   const buzz = new DriftBuzz();
 
   let car = createCar(0, 4, 0, 0);
@@ -142,27 +203,64 @@ async function boot() {
   let lastCountdown: number | null = null;
   // rAF stops while the tab is hidden, so enter the paused state from the event itself.
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) pauseState = pause.update(0, { inputOk: false, visible: false, keyboard: false });
+    if (document.hidden && !session.racing) pauseState = pause.update(0, { inputOk: false, visible: false, keyboard: false });
   });
   let goUntil = 0;
   let usedController = false;
   let acc = 0;
   let last = performance.now();
   let lastStatus = 0;
+  let lastBoard = 0;
   let smokeTick = 0;
+  let wasFinished = false;
+  let standings: ReturnType<Session["standings"]> = [];
   let current: CarInput = { steer: 0, brake: false, nitro: false };
 
   const haptic = (kind: "comboUp" | "comboEnd" | "reset" | "drift") => conn.send({ t: "haptic", kind });
 
+  /** A multiplayer round: everybody gets the same seed, so the same road, scenery and crowd. */
+  function startRound(r: Round) {
+    seed = r.seed;
+    setExtreme(r.extreme);
+    road = new Road(seed, roadStyle);
+    roadMesh.reset(seed);
+    crowd.people = [];
+    crowdView.clear();
+    police.units = [];
+    skids.clear();
+    recovery = new Recovery();
+    score = new ScoreSystem(score.best);
+    score.pointsScale = extreme ? 2 : 1;
+    combo.lost();
+    sound.setCombo(0);
+    const me = session.players.find((p) => p.id === session.me);
+    world.scene.remove(carView.root);
+    carView = new CarModel({ paint: me?.color });
+    world.scene.add(carView.root);
+    const slot = gridSlot(Math.max(0, r.grid.indexOf(session.me ?? "")));
+    car = createCar(slot.x, slot.z, 0, 0);
+    roadMesh.addPoints(road.ensureAhead(0));
+    carS = 0;
+    biomeIndex = -1;
+    wasFinished = false;
+    chase.snap();
+    started = true;
+    pauseState = { running: true, paused: false, countdown: null };
+    remoteCars.sync(session.players, session.me);
+    if (session.racing) lobbyUi.onRound();
+    hud.showBiome(MODE_INFO[r.mode].name.toUpperCase());
+  }
+
   function simStep(now: number) {
     let stale = false;
-    if (kb.active) current = kb.read();
+    if (kb.active && !lobbyUi.visible) current = kb.read();
     else {
       const r = input.read(now, SIM_DT);
       stale = r.stale;
       current = r;
     }
     input.consumeCalibrate(); // calibration happens on the phone; nothing to do here
+    const mp = session.racing;
     if (!started) {
       started = kb.active || !stale;
       hud.message(started ? null : "Başlamak için telefonu bağla ya da ok tuşlarına bas");
@@ -170,16 +268,53 @@ async function boot() {
     }
     if (!kb.active && !stale) usedController = true;
 
-    // Pause when the phone drops (or the tab is hidden); 3-2-1 when it comes back.
-    pauseState = pause.update(SIM_DT, {
-      inputOk: !stale,
-      visible: !document.hidden,
-      keyboard: kb.active || !usedController,
-    });
-    hud.message(pauseState.paused ? "Duraklatıldı — kontrolcü bağlantısı bekleniyor" : null);
-    if (!pauseState.running) return;
+    if (mp) {
+      // Multiplayer never pauses: the room keeps going, a dropped phone just lets go of the wheel.
+      pauseState = { running: true, paused: false, countdown: null };
+      hud.message(stale && usedController && !kb.active ? "Kontrolcü bağlantısı koptu" : null);
+      if (session.countdown(now) > 0) {
+        session.sendState(now, car, 0, 0, 0, 1, carS);
+        return; // on the grid
+      }
+    } else {
+      // Pause when the phone drops (or the tab is hidden); 3-2-1 when it comes back.
+      pauseState = pause.update(SIM_DT, {
+        inputOk: !stale,
+        visible: !document.hidden,
+        keyboard: kb.active || !usedController,
+      });
+      hud.message(pauseState.paused ? "Duraklatıldı — kontrolcü bağlantısı bekleniyor" : null);
+      if (!pauseState.running) return;
+    }
 
     car = stepCar(car, current, SIM_DT, extreme ? EXTREME : TUNING);
+
+    // Other players: bump off them unless this is a ghost round.
+    if (mp && session.round && MODE_INFO[session.round.mode].collisions) {
+      let hardest = 0;
+      for (const id of session.racers) {
+        if (id === session.me) continue;
+        const s = session.tracks.get(id)?.sample(now);
+        if (!s) continue;
+        const hit = collide(car, s.car);
+        if (hit) {
+          car = hit.car;
+          hardest = Math.max(hardest, hit.impact);
+        }
+      }
+      if (hardest > 2) {
+        chase.shake(Math.min(1.2, 0.15 + hardest * 0.06));
+        if (hardest > COMBO_BREAK_IMPACT && score.pending > 0 && !MODE_INFO[session.round.mode].race) {
+          combo.lost();
+          sound.setCombo(0);
+          score.cancelCombo();
+        }
+        if (hardest > COMBO_BREAK_IMPACT) {
+          sound.crash();
+          haptic("reset");
+        }
+      }
+    }
 
     // Spectators: a hit launches them, slows the car hard and costs the combo.
     const hits = crowd.update(SIM_DT, car);
@@ -224,7 +359,7 @@ async function boot() {
         }
         haptic(e);
         if (e === "comboUp") sound.ding(score.multiplier);
-        if (e === "comboEnd") localStorage.setItem(BEST_KEY, String(score.best));
+        if (e === "comboEnd") store(BEST_KEY, String(score.best));
       }
     }
 
@@ -243,6 +378,8 @@ async function boot() {
     roadMesh.trim(s - BEHIND);
     crowd.trim(s - BEHIND - 50);
     crowdView.sync(crowd.people);
+
+    if (mp) session.sendState(now, car, current.steer, score.total, score.pending, score.multiplier, carS);
   }
 
   function frame(now: number) {
@@ -254,6 +391,7 @@ async function boot() {
       acc -= SIM_DT;
     }
 
+    carView.root.visible = chase.showCar;
     carView.update(car, current, dt);
     smoke.update(dt);
     chase.update(car, dt, current.nitro);
@@ -262,7 +400,8 @@ async function boot() {
     const pal = blendPalette(biome.a.palette, biome.b.palette, biome.t);
     world.applyPalette(pal);
     setRoadColors(pal.asphalt, pal.paint);
-    carView.setLights(Math.min(1, Math.max(0, (1.15 - pal.sunIntensity) / 0.45)));
+    const lightLevel = Math.min(1, Math.max(0, (1.15 - pal.sunIntensity) / 0.45));
+    carView.setLights(lightLevel);
     if (biome.index !== biomeIndex) {
       biomeIndex = biome.index;
       hud.showBiome(biome.a.name);
@@ -270,14 +409,17 @@ async function boot() {
     const spd = speedOf(car);
     const accelerating = (spd - prevSpeed) / Math.max(dt, 1e-3) > 0.8 || current.nitro;
     prevSpeed = spd;
-    // Countdown overlay: 3, 2, 1, BAŞLA!
-    if (pauseState.countdown !== null) countdownEl.textContent = String(pauseState.countdown);
-    else if (lastCountdown !== null) goUntil = now + 700;
-    if (pauseState.countdown === null && now < goUntil) countdownEl.textContent = "BAŞLA!";
-    countdownEl.style.display = pauseState.countdown !== null || now < goUntil ? "flex" : "none";
-    lastCountdown = pauseState.countdown;
 
-    sound.update(spd, accelerating, current.nitro, car.drifting && !recovery.active, slipAngle(car), started && pauseState.running,
+    // Countdown overlay: 3, 2, 1, BAŞLA! — from the pause logic, or the shared multiplayer start.
+    const mpLeft = session.racing ? session.countdown(now) : 0;
+    const count = mpLeft > 0 ? Math.ceil(mpLeft) : pauseState.countdown;
+    if (count !== null) countdownEl.textContent = String(count);
+    else if (lastCountdown !== null) goUntil = now + 700;
+    if (count === null && now < goUntil) countdownEl.textContent = "BAŞLA!";
+    countdownEl.style.display = count !== null || now < goUntil ? "flex" : "none";
+    lastCountdown = count;
+
+    sound.update(spd, accelerating, current.nitro, car.drifting && !recovery.active, slipAngle(car), started && pauseState.running && mpLeft <= 0,
       surfaceAt(onRoad, (biome.t > 0.5 ? biome.b : biome.a).id));
 
     // Exhaust: pops/flames on shifts and lift-off, throttle blip on downshifts.
@@ -290,8 +432,20 @@ async function boot() {
       }
     }
 
+    // Other players.
+    const inRound = session.phase === "racing" && session.round !== null;
+    remoteCars.update(session.tracks, now, dt, {
+      ghost: inRound && !MODE_INFO[session.round!.mode].collisions,
+      lights: lightLevel,
+      active: inRound || session.phase === "results" ? session.racers : new Set(),
+      camera: world.camera.position,
+    });
+    if (session.finished && !wasFinished) {
+      wasFinished = true;
+      hud.showBiome("🏁 BİTİŞ!");
+    }
+
     // Police: one model per unit, driven by the sim; light bars flash once they are chasing.
-    const lightLevel = Math.min(1, Math.max(0, (1.15 - pal.sunIntensity) / 0.45));
     for (const u of police.units) {
       let view = policeViews.get(u);
       if (!view) {
@@ -332,6 +486,18 @@ async function boot() {
     combo.update(score.pending, score.multiplier, score.comboTimeLeft());
     hud.update(combo.displayedTotal, Math.max(score.best, score.total), score.pending, score.multiplier, speedOf(car) * 3.6);
 
+    // Live standings (5 Hz is plenty for DOM work).
+    if (now - lastBoard > 200) {
+      lastBoard = now;
+      if (inRound && session.racers.has(session.me ?? "")) {
+        standings = session.standings({ score: score.total + score.pending * score.multiplier, s: carS });
+        lobbyUi.updateBoard(standings, session.round!.mode, session.timeLeft(now), carS);
+      } else {
+        standings = [];
+        lobbyUi.updateBoard([], null, null, 0);
+      }
+    }
+
     // Combo atmosphere: vignette + speed lines grow with the multiplier.
     const feelTarget = score.pending > 0 ? score.multiplier : 0;
     feelM += (feelTarget - feelM) * Math.min(1, 4 * dt);
@@ -340,8 +506,8 @@ async function boot() {
     vignetteEl.style.setProperty("--c", comboTier(Math.max(1, Math.round(feelM))).color);
     linesEl.style.opacity = (feel.lines * 0.7).toFixed(3);
 
-    // Suggest extreme mode once.
-    const wantHint = xhint.update(dt, { extremeUsed: extreme, banked: bankedCount }) && started;
+    // Suggest extreme mode once (solo only).
+    const wantHint = xhint.update(dt, { extremeUsed: extreme, banked: bankedCount }) && started && !session.inRoom;
     if (wantHint !== hintShown) {
       hintShown = wantHint;
       xhintEl.style.display = "block";
@@ -351,7 +517,8 @@ async function boot() {
 
     if (now - lastStatus > 200) {
       lastStatus = now;
-      conn.send({ t: "status", score: score.total, combo: Math.round(score.pending), multiplier: score.multiplier, extreme });
+      const rankInfo = standings.length ? { rank: standings.findIndex((r) => r.me) + 1, players: standings.length } : {};
+      conn.send({ t: "status", score: score.total, combo: Math.round(score.pending), multiplier: score.multiplier, extreme, ...rankInfo });
     }
     world.renderer.render(world.scene, world.camera);
     requestAnimationFrame(frame);

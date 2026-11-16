@@ -6,10 +6,13 @@ import { SERVER_PORT } from "@drift/shared";
 
 export const LAST_URL_KEY = "drift.lastUrl";
 
+/** QR text or a typed address → socket URL. LAN IPs get ws://ip:8080, domain names get wss://. */
 function normalize(input: string): string | null {
   const s = input.trim();
-  if (s.startsWith("ws://")) return s;
+  if (/^wss?:\/\/[^\s]+$/i.test(s)) return s;
   if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(s)) return `ws://${s.includes(":") ? s : `${s}:${SERVER_PORT}`}`;
+  const host = s.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/i.test(host)) return `wss://${host}`;
   return null;
 }
 
@@ -63,7 +66,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (url: string) => void 
         </Pressable>
         {last && (
           <Pressable style={[styles.btn, styles.secondary]} onPress={() => go(last)}>
-            <Text style={styles.btnText}>Son bağlantı: {last.replace("ws://", "")}</Text>
+            <Text style={styles.btnText}>Son bağlantı: {last.replace(/^wss?:\/\//, "")}</Text>
           </Pressable>
         )}
       </View>

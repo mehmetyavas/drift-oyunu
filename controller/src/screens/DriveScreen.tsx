@@ -93,6 +93,7 @@ export function DriveScreen({ url, onBack }: { url: string; onBack: () => void }
           </View>
           <Text style={styles.score}>{status ? status.score.toLocaleString("tr-TR") : "—"}</Text>
           <Text style={styles.combo}>{status && status.combo > 0 ? `+${status.combo}  x${status.multiplier}` : " "}</Text>
+          {status?.rank ? <Text style={styles.rank}>{`${status.rank}. / ${status.players}`}</Text> : null}
         </View>
 
         {/* Middle: steering wheel */}
@@ -114,7 +115,10 @@ export function DriveScreen({ url, onBack }: { url: string; onBack: () => void }
               <Text style={styles.extremeText}>{status?.extreme ? "EXTREME AÇIK" : "🔥 EXTREME"}</Text>
             </Pressable>
           </Animated.View>
-          <Pressable style={styles.gear} onPress={() => setMenu(true)} hitSlop={10}>
+          <Pressable style={styles.gear} onPress={() => send({ t: "camera" })} hitSlop={10} accessibilityLabel="Kamera değiştir">
+            <Text style={styles.gearText}>🎥</Text>
+          </Pressable>
+          <Pressable style={styles.gear} onPress={() => setMenu(true)} hitSlop={10} accessibilityLabel="Ayarlar">
             <Text style={styles.gearText}>⚙</Text>
           </Pressable>
         </View>
@@ -161,6 +165,7 @@ const styles = StyleSheet.create({
   statusText: { color: "#ffffff99", fontSize: 13 },
   score: { color: "#fff", fontSize: 30, fontWeight: "800" },
   combo: { color: "#ffd27a", fontSize: 18, fontWeight: "700", height: 24 },
+  rank: { color: "#ff8a2a", fontSize: 16, fontWeight: "900", fontStyle: "italic", letterSpacing: 2 },
   wheel: { width: 120, height: 120, borderRadius: 60, borderWidth: 10, borderColor: "#ff6b5a", alignItems: "center", justifyContent: "center" },
   spoke: { width: 100, height: 8, backgroundColor: "#ff6b5a", borderRadius: 4 },
   marker: { position: "absolute", top: -2, width: 8, height: 16, backgroundColor: "#fff", borderRadius: 3 },

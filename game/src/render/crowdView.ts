@@ -264,6 +264,13 @@ export class CrowdView {
     }
   }
 
+  clear(): void {
+    for (const v of this.views.values()) this.scene.remove(v.root);
+    for (const bd of this.backdrops.values()) this.scene.remove(bd.group);
+    this.views.clear();
+    this.backdrops.clear();
+  }
+
   /** Removes views for spectators no longer in the crowd. */
   sync(alive: Spectator[]): void {
     if (alive.length === this.views.size) return;
